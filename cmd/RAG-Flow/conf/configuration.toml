@@ -1,0 +1,92 @@
+[Server.Http]
+# 不配置Host则会自动监听本机IP，在k8s部署时不要修改
+Host = "0.0.0.0"
+# HTTP服务监听端口号，在k8s部署时不要修改默认端口
+Port = 9003
+
+# 服务注册发现
+[SD]
+# 是否自动注册NED
+Enabled = true
+# 服务注册中心的类型，支持nacos，k8s，eureka
+Type = "nacos"
+# 注册服务名
+Name = "nms-inms-hxw-config"
+
+[SD.Client]
+# 下面参数只对nacos生效
+Username = "nacos"
+Password = "nacos"
+# 是否客户端主动心跳
+HeartBeat = true
+# 请求Nacos服务超时时间
+TimeoutMs = 5000
+
+[SD.Server]
+# 服务注册服务器的IP和端口
+IpAddr = "192.168.201.59"
+Port = 8848
+
+[Logging]
+# 日志输出格式是否为JSON
+IsJSON = false
+# 日志级别，支持运行时修改，error/warning/info/debug/trace
+Level = "debug"
+# 日志文件保留天数
+RotateCount = 3
+# 是否在容器中生成日志文件
+KeepInContainer = false
+# 是否压缩
+Compress = true
+
+# Kafka 消息中间件配置
+[Kafka]
+# Broker 地址，多个用逗号分隔
+Brokers = "localhost:9092"
+# 消费的 Topic，多个用逗号分隔
+Topic = "rag-documents"
+# 消费者组 ID
+Group = "rag-flow-consumer"
+# 是否从最早的消息开始消费
+Oldest = true
+# SASL 认证用户名（留空表示不启用认证）
+UserName = ""
+# SASL 认证密码
+Password = ""
+# SASL 认证算法：plain, sha256, sha512
+Algorithm = ""
+
+# Qdrant 向量数据库配置
+[Qdrant]
+# Qdrant gRPC 地址
+Url = "localhost:6334"
+# 集合名称
+Collection = "rag_vectors"
+# API Key（留空表示不启用认证）
+ApiKey = ""
+
+# 向量化服务配置
+[Embedding]
+# 向量化服务提供者：openai 或 tei
+Provider = "openai"
+# OpenAI API Key
+OpenAIApiKey = ""
+# OpenAI 模型名称
+OpenAIModel = "text-embedding-3-small"
+# TEI 服务地址（Provider 为 tei 时使用）
+TeiUrl = "http://localhost:8080"
+
+# 管道处理配置
+[Pipeline]
+# 文本分块大小（字符数）
+ChunkSize = 512
+# 分块重叠大小（字符数）
+ChunkOverlap = 64
+# 向量化批处理大小
+BatchSize = 64
+# 批处理刷新间隔（毫秒）
+FlushIntervalMs = 500
+# 各阶段 worker 数量
+WorkerCount = 4
+# 通道缓冲区大小
+ChannelBufferSize = 256
