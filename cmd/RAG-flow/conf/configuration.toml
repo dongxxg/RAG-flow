@@ -11,7 +11,7 @@ Enabled = true
 # 服务注册中心的类型，支持nacos，k8s，eureka
 Type = "nacos"
 # 注册服务名
-Name = "nms-inms-hxw-config"
+Name = "RAG-flow"
 
 [SD.Client]
 # 下面参数只对nacos生效

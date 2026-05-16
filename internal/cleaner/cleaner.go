@@ -9,15 +9,15 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"RAG-Flow/internal/models"
+	"github.com/dongxxg/RAG-flow/internal/models"
 )
 
 const minContentLength = 10
 
 var (
-	htmlTagRe     = regexp.MustCompile(`<[^>]*>`)
-	controlCharRe = regexp.MustCompile(`[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]`)
-	multiSpaceRe  = regexp.MustCompile(`[ \t]+`)
+	htmlTagRe      = regexp.MustCompile(`<[^>]*>`)
+	controlCharRe  = regexp.MustCompile(`[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]`)
+	multiSpaceRe   = regexp.MustCompile(`[ \t]+`)
 	multiNewlineRe = regexp.MustCompile(`\n{3,}`)
 )
 

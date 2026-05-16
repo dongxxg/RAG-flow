@@ -7,12 +7,12 @@ import (
 	"syscall"
 	"time"
 
-	"RAG-Flow/internal/chunker"
-	"RAG-Flow/internal/cleaner"
-	"RAG-Flow/internal/embedder"
-	"RAG-Flow/internal/models"
-	"RAG-Flow/internal/pipeline"
-	"RAG-Flow/internal/writer"
+	"github.com/dongxxg/RAG-flow/internal/chunker"
+	"github.com/dongxxg/RAG-flow/internal/cleaner"
+	"github.com/dongxxg/RAG-flow/internal/embedder"
+	"github.com/dongxxg/RAG-flow/internal/models"
+	"github.com/dongxxg/RAG-flow/internal/pipeline"
+	"github.com/dongxxg/RAG-flow/internal/writer"
 
 	conf "unitechs.com/unios-dice/uni-base/core/config"
 	"unitechs.com/unios-dice/uni-base/core/log"
@@ -29,6 +29,7 @@ type PipelineConfig struct {
 	FlushIntervalMs   int `toml:"FlushIntervalMs"`
 	WorkerCount       int `toml:"WorkerCount"`
 	ChannelBufferSize int `toml:"ChannelBufferSize"`
+	MaxContentLength  int `toml:"MaxContentLength"`
 }
 
 func main() {
@@ -45,13 +46,16 @@ func main() {
 	textCleaner := cleaner.New()
 
 	// 创建分块器
-	textChunker := chunker.New(pipelineCfg.ChunkSize, pipelineCfg.ChunkOverlap)
+	textChunker, err := chunker.New(pipelineCfg.ChunkSize, pipelineCfg.ChunkOverlap)
+	if err != nil {
+		log.Fatalf("创建分块器失败: %v", err)
+	}
 
 	// 创建向量化器
 	emb := newEmbedder()
 
 	// 创建 Qdrant 写入器
-	qdrantWriter := newQdrantWriter(emb)
+	qdrantWriter := newQdrantWriter(emb, pipelineCfg.MaxContentLength)
 
 	// 创建管道
 	pipe, err := pipeline.New(
@@ -104,6 +108,9 @@ func main() {
 		<-ctx.Done()
 		log.Info("收到停止信号，开始优雅停机...")
 		pipe.Stop()
+		if closeErr := emb.Close(); closeErr != nil {
+			log.Errorf("关闭 embedder 失败: %v", closeErr)
+		}
 	}()
 
 	// 通过 Bootstrap 启动 HTTP 服务、服务注册等
@@ -132,14 +139,22 @@ func setPipelineDefaults(cfg *PipelineConfig) {
 	if cfg.ChannelBufferSize <= 0 {
 		cfg.ChannelBufferSize = 256
 	}
+	if cfg.MaxContentLength <= 0 {
+		cfg.MaxContentLength = 200
+	}
 }
 
 func newEmbedder() embedder.Embedder {
 	provider := conf.GetString("Embedding.Provider")
 	switch provider {
 	case "tei":
+		opts := []embedder.TEIOption{}
+		if dim := conf.GetInt("Embedding.Dimensions"); dim > 0 {
+			opts = append(opts, embedder.WithTEIDimensions(dim))
+		}
 		return embedder.NewTEI(
 			conf.GetString("Embedding.TeiUrl"),
+			opts...,
 		)
 	default:
 		return embedder.NewOpenAI(
@@ -149,14 +164,16 @@ func newEmbedder() embedder.Embedder {
 	}
 }
 
-func newQdrantWriter(emb embedder.Embedder) writer.VectorWriter {
+func newQdrantWriter(emb embedder.Embedder, maxContentLen int) writer.VectorWriter {
 	addr := conf.GetString("Qdrant.Url")
 	host, port := writer.ParseQdrantHost(addr)
 	collection := conf.GetString("Qdrant.Collection")
 	apiKey := conf.GetString("Qdrant.ApiKey")
 	vectorDim := emb.Dimensions()
 
-	w, err := writer.NewQdrantWriter(host, port, collection, apiKey, vectorDim)
+	w, err := writer.NewQdrantWriter(host, port, collection, apiKey, vectorDim,
+		writer.WithMaxContentLength(maxContentLen),
+	)
 	if err != nil {
 		log.Fatalf("创建 Qdrant 写入器失败: %v", err)
 	}

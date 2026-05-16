@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
-	"RAG-Flow/internal/models"
+	"github.com/dongxxg/RAG-flow/internal/models"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
@@ -21,10 +22,11 @@ type VectorWriter interface {
 
 // QdrantWriter Qdrant 向量写入器
 type QdrantWriter struct {
-	client     *qdrant.Client
-	collection string
-	namespace  uuid.UUID
-	batchSize  int
+	client        *qdrant.Client
+	collection    string
+	namespace     uuid.UUID
+	batchSize     int
+	maxContentLen int
 }
 
 // QdrantOption Qdrant 写入器配置选项
@@ -32,6 +34,11 @@ type QdrantOption func(*QdrantWriter)
 
 func WithQdrantBatchSize(n int) QdrantOption {
 	return func(w *QdrantWriter) { w.batchSize = n }
+}
+
+// WithMaxContentLength 设置 Qdrant payload 中存储的最大内容长度（字符数，默认 200）
+func WithMaxContentLength(n int) QdrantOption {
+	return func(w *QdrantWriter) { w.maxContentLen = n }
 }
 
 // NewQdrantWriter 创建 Qdrant 写入器
@@ -53,10 +60,11 @@ func NewQdrantWriter(host string, port int, collection, apiKey string, vectorDim
 	}
 
 	w := &QdrantWriter{
-		client:     client,
-		collection: collection,
-		namespace:  uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
-		batchSize:  64,
+		client:        client,
+		collection:    collection,
+		namespace:     uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+		batchSize:     64,
+		maxContentLen: 200,
 	}
 	for _, opt := range opts {
 		opt(w)
@@ -110,7 +118,7 @@ func (w *QdrantWriter) toPoint(chunk models.EmbeddedChunk) (*qdrant.PointStruct,
 	payload := map[string]*qdrant.Value{
 		"doc_id":      qdrant.NewValueString(chunk.DocID),
 		"chunk_index": qdrant.NewValueInt(int64(chunk.ChunkIndex)),
-		"content":     qdrant.NewValueString(truncate(chunk.Content, 200)),
+		"content":     qdrant.NewValueString(truncateByRunes(chunk.Content, w.maxContentLen)),
 		"timestamp":   qdrant.NewValueString(time.Now().Format(time.RFC3339)),
 	}
 
@@ -153,12 +161,13 @@ func ensureCollection(ctx context.Context, client *qdrant.Client, collection str
 	return nil
 }
 
-// truncate 截断字符串
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+// truncateByRunes 按 rune 数截断字符串，保证 UTF-8 安全
+func truncateByRunes(s string, maxRunes int) string {
+	if utf8.RuneCountInString(s) <= maxRunes {
 		return s
 	}
-	return s[:maxLen]
+	runes := []rune(s)
+	return string(runes[:maxRunes])
 }
 
 // ParseQdrantHost 将 "host:port" 格式的 URL 解析为 host 和 port

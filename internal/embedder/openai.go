@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"time"
 )
@@ -116,11 +115,15 @@ func (e *OpenAIEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 	return allVectors, nil
 }
 
+// Close 关闭客户端
+func (e *OpenAIEmbedder) Close() error {
+	e.client.CloseIdleConnections()
+	return nil
+}
+
 // embedBatch 处理单个批次的向量化请求
 func (e *OpenAIEmbedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	var lastErr error
-
-	for attempt := 0; attempt <= e.maxRetry; attempt++ {
+	return doWithRetry(retryConfig{maxRetry: e.maxRetry}, func(attempt int) ([][]float32, error) {
 		if attempt > 0 {
 			delay := backoffDuration(attempt)
 			select {
@@ -129,20 +132,8 @@ func (e *OpenAIEmbedder) embedBatch(ctx context.Context, texts []string) ([][]fl
 			case <-time.After(delay):
 			}
 		}
-
-		vectors, err := e.doRequest(ctx, texts)
-		if err == nil {
-			return vectors, nil
-		}
-		lastErr = err
-
-		// 非可重试错误直接返回
-		if !isRetryable(err) {
-			return nil, err
-		}
-	}
-
-	return nil, fmt.Errorf("重试 %d 次后仍失败: %w", e.maxRetry, lastErr)
+		return e.doRequest(ctx, texts)
+	})
 }
 
 // doRequest 执行单次 HTTP 请求
@@ -204,30 +195,4 @@ func (e *OpenAIEmbedder) doRequest(ctx context.Context, texts []string) ([][]flo
 	}
 
 	return vectors, nil
-}
-
-// retryableError 可重试的错误
-type retryableError struct {
-	Err error
-}
-
-func (e *retryableError) Error() string { return e.Err.Error() }
-func (e *retryableError) Unwrap() error { return e.Err }
-
-// isRetryable 判断错误是否可重试
-func isRetryable(err error) bool {
-	_, ok := err.(*retryableError)
-	return ok
-}
-
-// backoffDuration 计算指数退避 + 随机抖动的等待时间
-func backoffDuration(attempt int) time.Duration {
-	base := 200 * time.Millisecond
-	maxDelay := 10 * time.Second
-	delay := base * time.Duration(1<<uint(attempt))
-	if delay > maxDelay {
-		delay = maxDelay
-	}
-	jitter := time.Duration(rand.Int63n(int64(delay / 2)))
-	return delay + jitter
 }

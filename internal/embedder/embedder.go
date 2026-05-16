@@ -8,4 +8,6 @@ type Embedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 	// Dimensions 返回向量的维度
 	Dimensions() int
+	// Close 释放资源
+	Close() error
 }

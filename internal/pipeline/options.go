@@ -3,17 +3,42 @@ package pipeline
 import (
 	"time"
 
-	"RAG-Flow/internal/chunker"
-	"RAG-Flow/internal/cleaner"
-	"RAG-Flow/internal/embedder"
-	"RAG-Flow/internal/writer"
+	"github.com/dongxxg/RAG-flow/internal/chunker"
+	"github.com/dongxxg/RAG-flow/internal/cleaner"
+	"github.com/dongxxg/RAG-flow/internal/embedder"
+	"github.com/dongxxg/RAG-flow/internal/writer"
 )
 
 // Option 管道配置选项
 type Option func(*Pipeline)
 
+// WithWorkerCount 设置所有阶段的 worker 数（全局默认，可被阶段特定选项覆盖）
 func WithWorkerCount(n int) Option {
-	return func(p *Pipeline) { p.workerCount = n }
+	return func(p *Pipeline) {
+		p.cleanerWorkers = n
+		p.chunkerWorkers = n
+		p.embedderWorkers = n
+	}
+}
+
+// WithCleanerWorkers 设置 cleaner worker 数
+func WithCleanerWorkers(n int) Option {
+	return func(p *Pipeline) { p.cleanerWorkers = n }
+}
+
+// WithChunkerWorkers 设置 chunker worker 数
+func WithChunkerWorkers(n int) Option {
+	return func(p *Pipeline) { p.chunkerWorkers = n }
+}
+
+// WithEmbedderWorkers 设置 embedder worker 数
+func WithEmbedderWorkers(n int) Option {
+	return func(p *Pipeline) { p.embedderWorkers = n }
+}
+
+// WithWriterWorkers 设置 writer worker 数
+func WithWriterWorkers(n int) Option {
+	return func(p *Pipeline) { p.writerWorkers = n }
 }
 
 func WithBatchSize(n int) Option {

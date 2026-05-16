@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"RAG-Flow/internal/models"
+	"github.com/dongxxg/RAG-flow/internal/models"
 )
 
 func TestClean(t *testing.T) {
@@ -57,7 +57,7 @@ func TestClean(t *testing.T) {
 		},
 		{
 			name: "HTML 标签被剥离",
-			msg: makeMsg(t, "doc4", "src", "", "<p>段落一</p><div><b>加粗</b></div><p>段落二继续</p>", nil),
+			msg:  makeMsg(t, "doc4", "src", "", "<p>段落一</p><div><b>加粗</b></div><p>段落二继续</p>", nil),
 			check: func(t *testing.T, doc models.CleanedDocument) {
 				if contains(doc.Content, "<") || contains(doc.Content, ">") {
 					t.Errorf("HTML 标签未清除: %q", doc.Content)
@@ -66,7 +66,7 @@ func TestClean(t *testing.T) {
 		},
 		{
 			name: "多余空白被规范化",
-			msg: makeMsg(t, "doc5", "src", "", "  多余   空格   和\n\n\n\n换行  ", nil),
+			msg:  makeMsg(t, "doc5", "src", "", "  多余   空格   和\n\n\n\n换行  ", nil),
 			check: func(t *testing.T, doc models.CleanedDocument) {
 				if doc.Content != "多余 空格 和\n\n换行" {
 					t.Errorf("空白未规范化: %q", doc.Content)
@@ -75,7 +75,7 @@ func TestClean(t *testing.T) {
 		},
 		{
 			name: "控制字符被移除",
-			msg: makeMsg(t, "doc6", "src", "", "正常\x00\x01\x02文本\x07继续内容在这里", nil),
+			msg:  makeMsg(t, "doc6", "src", "", "正常\x00\x01\x02文本\x07继续内容在这里", nil),
 			check: func(t *testing.T, doc models.CleanedDocument) {
 				for _, r := range doc.Content {
 					if r < 0x20 && r != '\n' && r != '\t' {
@@ -86,7 +86,7 @@ func TestClean(t *testing.T) {
 		},
 		{
 			name: "非法 UTF-8 被替换",
-			msg: makeRawMsg("doc7", "src", "", "合法\xff\xfe文本内容继续补充", nil),
+			msg:  makeRawMsg("doc7", "src", "", "合法\xff\xfe文本内容继续补充", nil),
 			check: func(t *testing.T, doc models.CleanedDocument) {
 				for _, r := range doc.Content {
 					if r == 0xFFFD {
@@ -98,7 +98,7 @@ func TestClean(t *testing.T) {
 		},
 		{
 			name: "元数据正确传递",
-			msg: makeMsg(t, "doc8", "src", "标题", "正常内容足够长在这里", map[string]string{"key": "value"}),
+			msg:  makeMsg(t, "doc8", "src", "标题", "正常内容足够长在这里", map[string]string{"key": "value"}),
 			check: func(t *testing.T, doc models.CleanedDocument) {
 				if doc.Metadata["key"] != "value" {
 					t.Errorf("元数据不匹配: got %v", doc.Metadata)

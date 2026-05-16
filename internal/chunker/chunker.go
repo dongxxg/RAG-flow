@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
-	"RAG-Flow/internal/models"
+	"github.com/dongxxg/RAG-flow/internal/models"
 )
 
 // 默认分隔符优先级
@@ -24,12 +25,22 @@ type RecursiveChunker struct {
 }
 
 // New 创建 RecursiveChunker 实例
-func New(chunkSize, overlap int) *RecursiveChunker {
+// chunkSize 必须 > 0，overlap 必须 >= 0 且 < chunkSize
+func New(chunkSize, overlap int) (*RecursiveChunker, error) {
+	if chunkSize <= 0 {
+		return nil, fmt.Errorf("chunkSize 必须 > 0，当前值: %d", chunkSize)
+	}
+	if overlap < 0 {
+		return nil, fmt.Errorf("overlap 不能为负数，当前值: %d", overlap)
+	}
+	if overlap >= chunkSize {
+		return nil, fmt.Errorf("overlap (%d) 必须 < chunkSize (%d)", overlap, chunkSize)
+	}
 	return &RecursiveChunker{
 		chunkSize:  chunkSize,
 		overlap:    overlap,
 		separators: defaultSeparators,
-	}
+	}, nil
 }
 
 // Chunk 将文档分割为多个文本分块
@@ -56,12 +67,12 @@ func (c *RecursiveChunker) Chunk(ctx context.Context, doc models.CleanedDocument
 
 	chunks := make([]models.TextChunk, 0, len(texts))
 	offset := 0
-	for i, text := range texts {
+	for _, text := range texts {
 		if strings.TrimSpace(text) == "" {
 			continue
 		}
 		chunks = append(chunks, models.NewTextChunk(
-			doc.DocID, text, i, offset, offset+len(text), doc.Metadata,
+			doc.DocID, text, len(chunks), offset, offset+len(text), doc.Metadata,
 		))
 		offset += len(text)
 	}
@@ -139,15 +150,32 @@ func (c *RecursiveChunker) splitText(text string, separators []string) []string 
 	return result
 }
 
-// forceSplit 强制按字符数分割
+// forceSplit 强制按字符数分割，保证 UTF-8 字符边界安全
 func (c *RecursiveChunker) forceSplit(text string) []string {
 	var result []string
-	for i := 0; i < len(text); i += c.chunkSize {
-		end := i + c.chunkSize
-		if end > len(text) {
-			end = len(text)
+	pos := 0
+	for pos < len(text) {
+		end := pos
+		remaining := c.chunkSize
+		// 按 rune 步进，确保 end 落在 UTF-8 字符边界上
+		for remaining > 0 && end < len(text) {
+			_, size := utf8.DecodeRuneInString(text[end:])
+			if size == 0 {
+				break
+			}
+			if size > remaining {
+				break
+			}
+			end += size
+			remaining -= size
 		}
-		result = append(result, text[i:end])
+		if end == pos {
+			// 单个 rune 超过 chunkSize，必须包含它以防无限循环
+			_, size := utf8.DecodeRuneInString(text[pos:])
+			end += size
+		}
+		result = append(result, text[pos:end])
+		pos = end
 	}
 	return result
 }
@@ -158,23 +186,25 @@ func (c *RecursiveChunker) mergeSmall(texts []string) []string {
 		return texts
 	}
 
-	var merged []string
-	current := texts[0]
+	merged := make([]string, 0, len(texts))
+	var b strings.Builder
+	b.WriteString(texts[0])
 
 	for i := 1; i < len(texts); i++ {
-		candidate := current + texts[i]
-		if len(candidate) <= c.chunkSize {
-			current = candidate
+		candidateLen := b.Len() + len(texts[i])
+		if candidateLen <= c.chunkSize {
+			b.WriteString(texts[i])
 		} else {
-			merged = append(merged, current)
-			current = texts[i]
+			merged = append(merged, b.String())
+			b.Reset()
+			b.WriteString(texts[i])
 		}
 	}
-	merged = append(merged, current)
+	merged = append(merged, b.String())
 	return merged
 }
 
-// addOverlap 为分块添加重叠区域
+// addOverlap 为分块添加重叠区域，保证 UTF-8 字符边界安全
 func (c *RecursiveChunker) addOverlap(texts []string) []string {
 	if c.overlap <= 0 || len(texts) <= 1 {
 		return texts
@@ -189,8 +219,15 @@ func (c *RecursiveChunker) addOverlap(texts []string) []string {
 		if overlapLen > len(prev) {
 			overlapLen = len(prev)
 		}
-		overlap := prev[len(prev)-overlapLen:]
-		result[i] = overlap + texts[i]
+		// 从 prev 尾部取 overlapLen 字节，但需要确保从有效的 UTF-8 字符边界开始
+		start := len(prev) - overlapLen
+		for start < len(prev) {
+			if utf8.RuneStart(prev[start]) {
+				break
+			}
+			start++
+		}
+		result[i] = prev[start:] + texts[i]
 	}
 
 	return result
